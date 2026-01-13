@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Comparador de Códigos de Barras</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f2f2f2;
+      text-align: center;
+      padding: 50px;
+    }
+    h1 {
+      color: #333;
+    }
+    input {
+      font-size: 22px;
+      padding: 12px;
+      width: 320px;
+      text-align: center;
+      margin: 10px;
+    }
+    #resultado {
+      margin-top: 30px;
+      font-size: 26px;
+      font-weight: bold;
+      padding: 15px;
+      border-radius: 10px;
+      display: inline-block;
+    }
+    .ok {
+      background-color: #4CAF50;
+      color: white;
+    }
+    .error {
+      background-color: #e53935;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <h1>Comparador de Códigos</h1>
+  <p>Escanea dos códigos (en cualquier orden).</p>
+
+  <input type="text" id="codigoInput" placeholder="Escanea aquí..." autofocus autocomplete="off">
+
+  <div id="resultado"></div>
+
+  <script>
+    let codigo1 = "";
+    let codigo2 = "";
+    let buffer = "";
+    let timeout;
+
+    const input = document.getElementById("codigoInput");
+    const result = document.getElementById("resultado");
+
+    function comparar() {
+      if (codigo1 && codigo2) {
+        if (codigo1 === codigo2) {
+          result.textContent = "✅ Los códigos son iguales (" + codigo1 + ")";
+          result.className = "ok";
+        } else {
+          result.textContent = "❌ Los códigos son diferentes (" + codigo1 + " ≠ " + codigo2 + ")";
+          result.className = "error";
+        }
+
+        // Reiniciar después de 1 segundos
+        setTimeout(() => {
+          codigo1 = "";
+          codigo2 = "";
+          result.textContent = "Escanea el siguiente par de códigos...";
+          result.className = "";
+        }, 1000);
+      }
+    }
+
+    function procesarCodigo(value) {
+      value = value.trim();
+
+      if (!codigo1) {
+        codigo1 = value;
+      } else if (!codigo2) {
+        codigo2 = value;
+      } else {
+        return;
+      }
+
+      comparar();
+    }
+
+    input.addEventListener("input", (e) => {
+      clearTimeout(timeout);
+      buffer += e.data || "";
+
+      timeout = setTimeout(() => {
+        if (buffer.length > 0) {
+          procesarCodigo(buffer);
+          buffer = "";
+          input.value = "";
+        }
+      }, 150);
+    });
+
+    // Mantener foco en input siempre
+    window.addEventListener("click", () => input.focus());
+  </script>
+</body>
+</html>
