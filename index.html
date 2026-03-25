@@ -36,6 +36,27 @@
       background-color: #e53935;
       color: white;
     }
+
+    #historial {
+  margin-top: 40px;
+  padding: 15px;
+  background: #ffffff;
+  border-radius: 10px;
+  display: inline-block;
+  min-width: 400px;
+}
+
+#historial h3 {
+  margin-bottom: 10px;
+  color: #333;
+}
+
+.codigos span {
+  display: block;
+  font-size: 20px;
+  margin: 5px 0;
+}
+
   </style>
 </head>
 <body>
@@ -46,64 +67,95 @@
 
   <div id="resultado"></div>
 
+  <div id="historial">
+  <h3>Últimos códigos escaneados</h3>
+  <div class="codigos">
+    <span id="ultimo1">—</span>
+    <span id="ultimo2">—</span>
+  </div>
+</div>
+
+
   <script>
-    let codigo1 = "";
-    let codigo2 = "";
-    let buffer = "";
-    let timeout;
+  let codigo1 = "";
+  let codigo2 = "";
+  let buffer = "";
+  let timeout;
 
-    const input = document.getElementById("codigoInput");
-    const result = document.getElementById("resultado");
+  const input = document.getElementById("codigoInput");
+  const result = document.getElementById("resultado");
 
-    function comparar() {
-      if (codigo1 && codigo2) {
-        if (codigo1 === codigo2) {
-          result.textContent = "✅ Los códigos son iguales (" + codigo1 + ")";
-          result.className = "ok";
-        } else {
-          result.textContent = "❌ Los códigos son diferentes (" + codigo1 + " ≠ " + codigo2 + ")";
-          result.className = "error";
-        }
+  function comparar() {
+    
+    if (codigo1 && codigo2) {
+        // Mostrar últimos códigos escaneados
+      document.getElementById("ultimo1").textContent = codigo1;
+      document.getElementById("ultimo2").textContent = codigo2;
 
-        // Reiniciar después de 1 segundos
-        setTimeout(() => {
-          codigo1 = "";
-          codigo2 = "";
-          result.textContent = "Escanea el siguiente par de códigos...";
-          result.className = "";
-        }, 1000);
-      }
-    }
 
-    function procesarCodigo(value) {
-      value = value.trim();
+      const c1TieneP = codigo1.startsWith("P");
+      const c2TieneP = codigo2.startsWith("P");
 
-      if (!codigo1) {
-        codigo1 = value;
-      } else if (!codigo2) {
-        codigo2 = value;
-      } else {
+      // Debe haber EXACTAMENTE uno con P
+      if (c1TieneP === c2TieneP) {
+        result.textContent = "❌ Uno debe iniciar con 'P' y el otro no";
+        result.className = "error";
+        reiniciar();
         return;
       }
 
-      comparar();
+      // Quitamos la P al que la tenga
+      const limpio1 = c1TieneP ? codigo1.substring(1) : codigo1;
+      const limpio2 = c2TieneP ? codigo2.substring(1) : codigo2;
+
+      if (limpio1 === limpio2) {
+        result.textContent = "✅ Los códigos coinciden (" + limpio1 + ")";
+        result.className = "ok";
+      } else {
+        result.textContent = "❌ Los códigos NO coinciden (" + limpio1 + " ≠ " + limpio2 + ")";
+        result.className = "error";
+      }
+
+      reiniciar();
+    }
+  }
+
+  function reiniciar() {
+    setTimeout(() => {
+      codigo1 = "";
+      codigo2 = "";
+      result.textContent = "Escanea el siguiente par de códigos...";
+      result.className = "";
+    }, 1000);
+  }
+
+  function procesarCodigo(value) {
+    value = value.trim();
+
+    if (!codigo1) {
+      codigo1 = value;
+    } else if (!codigo2) {
+      codigo2 = value;
     }
 
-    input.addEventListener("input", (e) => {
-      clearTimeout(timeout);
-      buffer += e.data || "";
+    comparar();
+  }
 
-      timeout = setTimeout(() => {
-        if (buffer.length > 0) {
-          procesarCodigo(buffer);
-          buffer = "";
-          input.value = "";
-        }
-      }, 150);
-    });
+  input.addEventListener("input", (e) => {
+    clearTimeout(timeout);
+    buffer += e.data || "";
 
-    // Mantener foco en input siempre
-    window.addEventListener("click", () => input.focus());
-  </script>
+    timeout = setTimeout(() => {
+      if (buffer.length > 0) {
+        procesarCodigo(buffer);
+        buffer = "";
+        input.value = "";
+      }
+    }, 150);
+  });
+
+  window.addEventListener("click", () => input.focus());
+</script>
+
 </body>
 </html>
