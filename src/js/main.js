@@ -72,77 +72,99 @@ window.addEventListener("click", (e) => {
   ];
   if (!ignorar.includes(e.target.id)) input.focus();
 });
+
 /* ═══════════════════════════════════════
-   MODO TELÉFONO — Safari iOS (input capture)
+   MODO TELÉFONO — QuaggaJS (universal)
 ═══════════════════════════════════════ */
 const btnModoTelefono  = document.getElementById("btnModoTelefono");
 const camaraPanel      = document.getElementById("camaraPanel");
+const videoElement     = document.getElementById("videoElement");
+const btnCambiarCamara = document.getElementById("btnCambiarCamara");
 const camStatus        = document.getElementById("camStatus");
 const flashOk          = document.getElementById("flashOk");
 const codigoDetectadoEl= document.getElementById("codigoDetectado");
 
 let camaraActiva = false;
+let facingMode   = "environment";
+let quaggaActivo = false;
+let cooldown     = false;
 
-// Crear input de captura oculto
-const inputCaptura = document.createElement("input");
-inputCaptura.type    = "file";
-inputCaptura.accept  = "image/*";
-inputCaptura.capture = "environment";
-inputCaptura.style.display = "none";
-document.body.appendChild(inputCaptura);
+function iniciarQuagga(facing) {
+  if (quaggaActivo) pararQuagga();
 
-// Botón escanear que dispara la cámara nativa
-const btnEscanearCamara = document.createElement("button");
-btnEscanearCamara.id = "btnEscanearCamara";
-btnEscanearCamara.style.cssText = `
-  padding:14px 28px; font-size:clamp(16px,4vw,20px);
-  background:#6A1B9A; color:white; border:none;
-  border-radius:10px; cursor:pointer; width:min(280px,90%);
-  margin-top:6px;`;
+  camStatus.textContent = "Iniciando cámara...";
+  codigoDetectadoEl.textContent = "";
 
-function actualizarBotonEscanear() {
-  btnEscanearCamara.textContent = !codigo1 ? "📸 Escanear 1er código" : "📸 Escanear 2do código";
-}
-actualizarBotonEscanear();
-
-btnEscanearCamara.addEventListener("click", () => inputCaptura.click());
-
-// Procesar foto tomada con la cámara nativa
-inputCaptura.addEventListener("change", async () => {
-  const file = inputCaptura.files[0];
-  if (!file) return;
-
-  camStatus.textContent = "Leyendo código...";
-
-  try {
-    const bitmap = await createImageBitmap(file);
-    const detector = new BarcodeDetector({
-      formats: ["code_128","code_39","ean_13","ean_8",
-                "upc_a","upc_e","qr_code","data_matrix","itf","codabar"]
-    });
-    const resultados = await detector.detect(bitmap);
-
-    if (resultados.length > 0) {
-      const texto = resultados[0].rawValue;
-      codigoDetectadoEl.textContent = "🔍 " + texto;
-      flashOk.classList.add("show");
-      setTimeout(() => flashOk.classList.remove("show"), 300);
-      procesarCodigo(texto);
-      actualizarBotonEscanear();
-      camStatus.textContent = !codigo1
-        ? "✅ Listo — escanea el 2do código"
-        : "✅ Listo — escanea otro par";
-    } else {
-      camStatus.textContent = "⚠️ No se detectó código, intenta acercarte más";
+  Quagga.init({
+    inputStream: {
+      name: "Live",
+      type: "LiveStream",
+      target: document.getElementById("videoContainer"),
+      constraints: {
+        facingMode: facing,
+        width:  { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+    },
+    decoder: {
+      readers: [
+        "code_128_reader",
+        "ean_reader",
+        "ean_8_reader",
+        "upc_reader",
+        "upc_e_reader",
+        "code_39_reader",
+        "codabar_reader",
+        "i2of5_reader"
+      ],
+      multiple: false
+    },
+    locate: true,
+    numOfWorkers: 2,
+    frequency: 10
+  }, (err) => {
+    if (err) {
+      camStatus.textContent = "⚠️ Error al iniciar cámara: " + err.message;
+      console.error(err);
+      return;
     }
-  } catch(e) {
-    // BarcodeDetector no disponible — pedir código manual
-    camStatus.textContent = "⚠️ Escáner no soportado, ingresa el código manualmente";
-    console.error(e);
-  }
+    Quagga.start();
+    quaggaActivo = true;
+    camStatus.textContent = facing === "environment"
+      ? "📷 Cámara trasera — apunta al código"
+      : "🤳 Cámara frontal — apunta al código";
+  });
 
-  inputCaptura.value = ""; // reset para poder volver a escanear
-});
+  Quagga.offDetected(); // limpiar listeners anteriores
+  Quagga.onDetected((data) => {
+    if (cooldown) return;
+    const texto = data.codeResult.code;
+    if (!texto) return;
+
+    codigoDetectadoEl.textContent = "🔍 " + texto;
+    flashOk.classList.add("show");
+    setTimeout(() => flashOk.classList.remove("show"), 180);
+
+    cooldown = true;
+    setTimeout(() => { cooldown = false; }, 1800);
+
+    procesarCodigo(texto);
+  });
+}
+
+function pararQuagga() {
+  if (quaggaActivo) {
+    Quagga.stop();
+    Quagga.offDetected();
+    quaggaActivo = false;
+  }
+  cooldown = false;
+  codigoDetectadoEl.textContent = "";
+
+  // Quagga inserta su propio <video> y <canvas>, limpiarlos
+  const contenedor = document.getElementById("videoContainer");
+  contenedor.querySelectorAll("video, canvas").forEach(el => el.remove());
+}
 
 btnModoTelefono.addEventListener("click", () => {
   camaraActiva = !camaraActiva;
@@ -150,19 +172,17 @@ btnModoTelefono.addEventListener("click", () => {
     camaraPanel.classList.add("visible");
     btnModoTelefono.textContent = "❌ Cerrar Modo Teléfono";
     btnModoTelefono.style.backgroundColor = "#b71c1c";
-    // Insertar botón escanear en el panel
-    document.querySelector(".camBotones").appendChild(btnEscanearCamara);
-    camStatus.textContent = "Presiona el botón para abrir la cámara";
+    iniciarQuagga(facingMode);
   } else {
     camaraPanel.classList.remove("visible");
     btnModoTelefono.textContent = "📱 Modo Teléfono";
     btnModoTelefono.style.backgroundColor = "";
-    camStatus.textContent = "";
+    pararQuagga();
+    camStatus.textContent = "Iniciando cámara...";
   }
 });
 
-// Ocultar el video y el botón cambiar cámara (no aplican en este modo)
-document.getElementById("videoElement").style.display = "none";
-document.getElementById("btnCambiarCamara").style.display = "none";
-document.getElementById("mira").style.display = "none";
-document.getElementById("scanLine").style.display = "none";
+btnCambiarCamara.addEventListener("click", () => {
+  facingMode = facingMode === "environment" ? "user" : "environment";
+  iniciarQuagga(facingMode);
+});
