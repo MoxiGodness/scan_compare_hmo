@@ -72,196 +72,77 @@ window.addEventListener("click", (e) => {
   ];
   if (!ignorar.includes(e.target.id)) input.focus();
 });
-
 /* ═══════════════════════════════════════
-   MODO TELÉFONO — compatible Safari iOS
+   MODO TELÉFONO — Safari iOS (input capture)
 ═══════════════════════════════════════ */
-const btnModoTelefono = document.getElementById("btnModoTelefono");
-const camaraPanel = document.getElementById("camaraPanel");
-const videoElement = document.getElementById("videoElement");
-const btnCambiarCamara = document.getElementById("btnCambiarCamara");
-const camStatus = document.getElementById("camStatus");
-const flashOk = document.getElementById("flashOk");
-const codigoDetectadoEl = document.getElementById("codigoDetectado");
+const btnModoTelefono  = document.getElementById("btnModoTelefono");
+const camaraPanel      = document.getElementById("camaraPanel");
+const camStatus        = document.getElementById("camStatus");
+const flashOk          = document.getElementById("flashOk");
+const codigoDetectadoEl= document.getElementById("codigoDetectado");
 
-let streamActual = null;
 let camaraActiva = false;
-let facingMode = "environment";
-let detector = null;
-let scanLoop = null;
-let cooldown = false;
 
-// Verificar soporte de BarcodeDetector (nativo iOS 17+ / Chrome Android)
-const soportaBarcodeDetector = "BarcodeDetector" in window;
+// Crear input de captura oculto
+const inputCaptura = document.createElement("input");
+inputCaptura.type    = "file";
+inputCaptura.accept  = "image/*";
+inputCaptura.capture = "environment";
+inputCaptura.style.display = "none";
+document.body.appendChild(inputCaptura);
 
-async function crearDetector() {
-  if (!soportaBarcodeDetector) return null;
-  try {
-    return new BarcodeDetector({
-      formats: [
-        "code_128",
-        "code_39",
-        "ean_13",
-        "ean_8",
-        "upc_a",
-        "upc_e",
-        "qr_code",
-        "data_matrix",
-        "itf",
-        "codabar",
-      ],
-    });
-  } catch (e) {
-    return null;
-  }
+// Botón escanear que dispara la cámara nativa
+const btnEscanearCamara = document.createElement("button");
+btnEscanearCamara.id = "btnEscanearCamara";
+btnEscanearCamara.style.cssText = `
+  padding:14px 28px; font-size:clamp(16px,4vw,20px);
+  background:#6A1B9A; color:white; border:none;
+  border-radius:10px; cursor:pointer; width:min(280px,90%);
+  margin-top:6px;`;
+
+function actualizarBotonEscanear() {
+  btnEscanearCamara.textContent = !codigo1 ? "📸 Escanear 1er código" : "📸 Escanear 2do código";
 }
+actualizarBotonEscanear();
 
-async function iniciarCamara(facing) {
-  pararLoop();
-  if (streamActual) {
-    streamActual.getTracks().forEach((t) => t.stop());
-    streamActual = null;
-  }
-  codigoDetectadoEl.textContent = "";
-  camStatus.textContent = "Iniciando cámara...";
+btnEscanearCamara.addEventListener("click", () => inputCaptura.click());
 
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: facing },
-        width: { ideal: 1280 },
-        height: { ideal: 960 },
-      },
-      audio: false,
-    });
-    streamActual = stream;
-    videoElement.srcObject = stream;
+// Procesar foto tomada con la cámara nativa
+inputCaptura.addEventListener("change", async () => {
+  const file = inputCaptura.files[0];
+  if (!file) return;
 
-    await new Promise((res) => {
-      videoElement.onloadedmetadata = res;
-    });
-    await videoElement.play();
+  camStatus.textContent = "Leyendo código...";
 
-    const camLabel =
-      facing === "environment" ? "📷 Cámara trasera" : "🤳 Cámara frontal";
-
-    if (soportaBarcodeDetector) {
-      detector = await crearDetector();
-      camStatus.textContent = camLabel + " — apunta al código";
-      iniciarLoop();
-    } else {
-      // Fallback: Safari iOS < 17 — mostrar botón para capturar foto
-      camStatus.textContent = camLabel + " — presiona el botón para escanear";
-      mostrarBotonCaptura();
-    }
-  } catch (err) {
-    camStatus.textContent = "⚠️ Error: " + err.message;
-    console.error(err);
-  }
-}
-
-/* ── Loop de detección (BarcodeDetector) ── */
-function iniciarLoop() {
-  if (scanLoop) return;
-  scanLoop = setInterval(async () => {
-    if (cooldown || !detector || videoElement.readyState < 2) return;
-    try {
-      const resultados = await detector.detect(videoElement);
-      if (resultados.length > 0) {
-        const texto = resultados[0].rawValue;
-        codigoDetectadoEl.textContent = "🔍 " + texto;
-        flashOk.classList.add("show");
-        setTimeout(() => flashOk.classList.remove("show"), 180);
-        cooldown = true;
-        setTimeout(() => {
-          cooldown = false;
-        }, 1800);
-        procesarCodigo(texto);
-      }
-    } catch (e) {}
-  }, 250);
-}
-
-function pararLoop() {
-  if (scanLoop) {
-    clearInterval(scanLoop);
-    scanLoop = null;
-  }
-  cooldown = false;
-}
-
-/* ── Fallback: input file capture para Safari iOS < 17 ── */
-let inputCaptura = null;
-function mostrarBotonCaptura() {
-  // Crear input oculto si no existe
-  if (!inputCaptura) {
-    inputCaptura = document.createElement("input");
-    inputCaptura.type = "file";
-    inputCaptura.accept = "image/*";
-    inputCaptura.capture = "environment";
-    inputCaptura.style.display = "none";
-    document.body.appendChild(inputCaptura);
-
-    inputCaptura.addEventListener("change", async () => {
-      const file = inputCaptura.files[0];
-      if (!file) return;
-      camStatus.textContent = "Procesando imagen...";
-      await leerCodigoDeImagen(file);
-      inputCaptura.value = ""; // reset para permitir escanear de nuevo
-    });
-  }
-
-  // Botón visible para disparar la captura
-  let btnCaptura = document.getElementById("btnCaptura");
-  if (!btnCaptura) {
-    btnCaptura = document.createElement("button");
-    btnCaptura.id = "btnCaptura";
-    btnCaptura.textContent = "📸 Escanear código";
-    btnCaptura.style.cssText = `
-      padding:12px 24px; font-size:16px; background:#6A1B9A;
-      color:white; border:none; border-radius:8px; cursor:pointer; margin-top:4px;`;
-    btnCaptura.addEventListener("click", () => inputCaptura.click());
-    document.querySelector(".camBotones").appendChild(btnCaptura);
-  }
-  btnCaptura.style.display = "inline-flex";
-}
-
-async function leerCodigoDeImagen(file) {
-  if (!soportaBarcodeDetector) {
-    camStatus.textContent =
-      "⚠️ Tu navegador no soporta escaneo automático. Usa el escáner físico.";
-    return;
-  }
   try {
     const bitmap = await createImageBitmap(file);
-    const det = await crearDetector();
-    const resultados = await det.detect(bitmap);
+    const detector = new BarcodeDetector({
+      formats: ["code_128","code_39","ean_13","ean_8",
+                "upc_a","upc_e","qr_code","data_matrix","itf","codabar"]
+    });
+    const resultados = await detector.detect(bitmap);
+
     if (resultados.length > 0) {
       const texto = resultados[0].rawValue;
       codigoDetectadoEl.textContent = "🔍 " + texto;
       flashOk.classList.add("show");
       setTimeout(() => flashOk.classList.remove("show"), 300);
       procesarCodigo(texto);
-      camStatus.textContent = "✅ Código leído — vuelve a escanear para el 2do";
+      actualizarBotonEscanear();
+      camStatus.textContent = !codigo1
+        ? "✅ Listo — escanea el 2do código"
+        : "✅ Listo — escanea otro par";
     } else {
-      camStatus.textContent = "⚠️ No se detectó código, intenta de nuevo";
+      camStatus.textContent = "⚠️ No se detectó código, intenta acercarte más";
     }
-  } catch (e) {
-    camStatus.textContent = "⚠️ Error al leer imagen: " + e.message;
+  } catch(e) {
+    // BarcodeDetector no disponible — pedir código manual
+    camStatus.textContent = "⚠️ Escáner no soportado, ingresa el código manualmente";
+    console.error(e);
   }
-}
 
-function detenerCamara() {
-  pararLoop();
-  if (streamActual) {
-    streamActual.getTracks().forEach((t) => t.stop());
-    streamActual = null;
-  }
-  videoElement.srcObject = null;
-  codigoDetectadoEl.textContent = "";
-  const btnCaptura = document.getElementById("btnCaptura");
-  if (btnCaptura) btnCaptura.style.display = "none";
-}
+  inputCaptura.value = ""; // reset para poder volver a escanear
+});
 
 btnModoTelefono.addEventListener("click", () => {
   camaraActiva = !camaraActiva;
@@ -269,17 +150,19 @@ btnModoTelefono.addEventListener("click", () => {
     camaraPanel.classList.add("visible");
     btnModoTelefono.textContent = "❌ Cerrar Modo Teléfono";
     btnModoTelefono.style.backgroundColor = "#b71c1c";
-    iniciarCamara(facingMode);
+    // Insertar botón escanear en el panel
+    document.querySelector(".camBotones").appendChild(btnEscanearCamara);
+    camStatus.textContent = "Presiona el botón para abrir la cámara";
   } else {
     camaraPanel.classList.remove("visible");
     btnModoTelefono.textContent = "📱 Modo Teléfono";
     btnModoTelefono.style.backgroundColor = "";
-    detenerCamara();
-    camStatus.textContent = "Iniciando cámara...";
+    camStatus.textContent = "";
   }
 });
 
-btnCambiarCamara.addEventListener("click", () => {
-  facingMode = facingMode === "environment" ? "user" : "environment";
-  iniciarCamara(facingMode);
-});
+// Ocultar el video y el botón cambiar cámara (no aplican en este modo)
+document.getElementById("videoElement").style.display = "none";
+document.getElementById("btnCambiarCamara").style.display = "none";
+document.getElementById("mira").style.display = "none";
+document.getElementById("scanLine").style.display = "none";
